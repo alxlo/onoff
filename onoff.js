@@ -23,6 +23,7 @@ exports.version = '0.3.0';
  *                   // specified determine what watchers watch for. The valid
  *                   // values are: 'none', 'rising', 'falling' or 'both'.
  *                   // The default value is 'none'. [optional]
+                     // and it is not supported on all systems
  * [options: object] // Additional options. [optional]
  *
  * The options argument supports the following:
@@ -41,22 +42,30 @@ function Gpio(gpio, direction, edge, options) {
     options = options || {};
 
     this.gpio = gpio;
-    this.gpioPath = gpioRootPath + 'gpio' + this.gpio + '/';
+    this.gpioPath = getGpioPath(this.gpio);
     this.opts = {};
     this.opts.debounceTimeout = options.debounceTimeout || 0;
     this.readBuffer = new Buffer(16);
     this.listeners = [];
 
-    valuePath = this.gpioPath + 'value';
+    
 
-    if (!fs.existsSync(this.gpioPath)) {
-        // The pin hasn't been exported yet so export it.
+
+    if (!this.gpioPath)
+       {
+        // gpiopath is nout found (null), so
+        // the pin hasn't been exported yet so export it.
         fs.writeFileSync(gpioRootPath + 'export', this.gpio);
+        this.gpioPath = getGpioPath(this.gpio);
         fs.writeFileSync(this.gpioPath + 'direction', direction);
         if (edge) {
-            fs.writeFileSync(this.gpioPath + 'edge', edge);
+            try{
+                fs.writeFileSync(this.gpioPath + 'edge', edge);
+            } catch (e){
+                console.warn("The parameter 'edge' is not supported by this gpio system.")
+            }
         }
-
+        valuePath = this.gpioPath + 'value'; 
         // Allow all users to read and write the GPIO value file
         fs.chmodSync(valuePath, 0666);
     } else {
@@ -72,6 +81,7 @@ function Gpio(gpio, direction, edge, options) {
         // gpio utility can set both direction and edge. If there are any
         // errors while attempting to perform the modifications, just keep on
         // truckin'.
+        valuePath = this.gpioPath + 'value'; 
         try {
             fs.writeFileSync(this.gpioPath + 'direction', direction);
         } catch (e) {
@@ -227,7 +237,12 @@ Gpio.prototype.direction = function() {
  * Returns - string // 'none', 'rising', 'falling' or 'both'
  */
 Gpio.prototype.edge = function() {
-    return fs.readFileSync(this.gpioPath + 'edge').toString().trim();
+    try{
+        return fs.readFileSync(this.gpioPath + 'edge').toString().trim();
+    } catch (e){
+        console.warn("The parameter 'edge' is not supported by this gpio system.");
+        return null;
+    }
 };
 
 /**
@@ -249,3 +264,31 @@ Gpio.prototype.unexport = function(callback) {
     fs.writeFileSync(gpioRootPath + 'unexport', this.gpio);
 };
 
+
+
+
+    // workaround for /sys/class/gpio on sunxi-linux
+    // export does not create /sys/class/gpio/gpio<number>,
+    // instead it creates /sys/class/gpio/gpio<number>_<port>
+
+function getGpioPath(gpionumber){
+    var normalPath = gpioRootPath + 'gpio' + gpionumber + '/'
+    if (fs.existsSync(normalPath))
+        return normalPath;
+    // check if there is a path starting with the normalPath followed by "_"
+    var searchTerm = 'gpio' + gpionumber + '_';
+    var rootPathEntries = fs.readdirSync(gpioRootPath); 
+    for (var i in rootPathEntries) {
+        if (rootPathEntries[i].indexOf(searchTerm) !== -1) {
+            //we have a hit, letst test if this is a directory
+            var sunxiPath = gpioRootPath + rootPathEntries[i] + '/';
+            if (fs.existsSync(sunxiPath)) {
+                console.log("system is using sunxi path " + sunxiPath);
+                return sunxiPath
+            } else {
+                return null;
+            }
+        } // end if (rootPathEntries[i]....
+    } //end for
+    return null;
+}
