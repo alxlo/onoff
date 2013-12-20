@@ -16,9 +16,12 @@ function exit() {
 
 process.on('SIGINT', exit);
 
-button.read(function(err, value) {  // Asynchronous read.
+setInterval(function(){
+    button.read(function(err, value) {  // Asynchronous read.
         if (err) throw err;
         console.log("value: " + value);
-});
+    });
+}, 1000);
+
 
 

@@ -93,8 +93,13 @@ function Gpio(gpio, direction, edge, options) {
         } catch (e) {
         }
     }
-
-    this.valueFd = fs.openSync(valuePath, 'r+'); // Cache fd for performance.
+    try{
+        this.valueFd = fs.openSync(valuePath, 'r+'); // Cache fd for performance.    
+    } catch (e) {
+        this.valueFd = fs.openSync(valuePath, 'r');
+        console.warn("supporting read-only operation on gpio " + valuePath);
+    }
+    
 
     // Read current value before polling to prevent unauthentic interrupts.
     this.readSync();
